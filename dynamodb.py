@@ -2,6 +2,7 @@ import boto3
 import time
 from datetime import datetime, timedelta
 from boto3.dynamodb.conditions import Key
+import json
 
 
 def get_client_connection():
@@ -88,6 +89,22 @@ def get_ttl():
     return int(ttl)
 
 
+def load_from_file(db):
+    with open('movies.json', 'r') as datafile:
+        movies = json.load(datafile)
+    table = db.Table('Movies')
+    for movie in movies:
+        item = {
+                'year': movie['year'],
+                'title': movie['title'],
+                'info': movie['info'],
+                'ttl': get_ttl()
+        }
+        print("LOADING", item)
+        response = table.put_item(Item=item)
+        print("LOADED ITEM", response)
+
+
 def add_record(db):
     table = db.Table('Movies')
     table.put_item(
@@ -123,22 +140,38 @@ def add_batch(db):
     })
 
 
-def list_2020_movies(db):
-    print('2020 movies')
+def get_single_item(db):
     table = db.Table('Movies')
-    response = table.query(KeyConditionExpression=Key('year').eq(2020))
+    response = table.get_item(
+        Key={
+            'year': 1999,
+            'title': 'The Matrix'
+        }
+    )
+    print("Find one item:", response['Item'])
+
+
+def list_movies_for_year(db, year):
+    print('Movies for year', year)
+    table = db.Table('Movies')
+    response = table.query(KeyConditionExpression=Key('year').eq(year))
     movies = response['Items']
     for movie in movies:
         print(movie)
     return movies
 
 
-def query_data(db):
-    print('2019 movies')
+def count_items_in_table(db):
     table = db.Table('Movies')
-    response = table.query(KeyConditionExpression=Key('year').eq(2019))
-    for movie in response['Items']:
-        print(movie)
+    print("Num items in table", table.item_count)
+
+
+
+def find_movies_starting_the(db):
+    response = db.Table('Movies').query(
+        KeyConditionExpression=Key('year').eq(1999) & Key('title').begins_with('The')
+    )
+    print("Movies starting with 'The'", response['Items'])
 
 
 def update_data(db):
@@ -166,7 +199,7 @@ def delete_data(db):
         }
     )
     print('Movie deleted', response)
-    movies = list_2020_movies(db)
+    movies = list_movies_for_year(db, 2020)
     for movie in movies:
         if movie['title'] == 'Birds of pray':
             raise Exception('Movie was not deleted')
@@ -185,10 +218,14 @@ def crud_test():
         create_table(client)
 
     db = get_resource_connection()
+    load_from_file(db)
+    list_movies_for_year(db, 1999)
+    get_single_item(db)
+    find_movies_starting_the(db)
     add_record(db)
     add_batch(db)
-    query_data(db)
     update_data(db)
+    count_items_in_table(db)
     delete_data(db)
     delete_table(db)
 
