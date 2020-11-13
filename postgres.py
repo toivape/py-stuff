@@ -5,10 +5,14 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from psycopg2.extras import execute_values
 
 
-def get_connection(host, dbname, user, password):
+def _get_connection(host, dbname, user, password):
     dsn = "host='{0}' dbname='{1}' user='{2}' password='{3}'".format(host, dbname, user, password)
     print("Connecting to database [" + dsn + "]")
     return psycopg2.connect(dsn)
+
+
+def get_connection():
+    return _get_connection(host='localhost', dbname='movies', user='postgres', password='postgres')
 
 
 def create_database():
@@ -120,9 +124,10 @@ def to_movie(row):
     )
 
 
-def fetch_batches(conn, batch_size, fetch_since, process_batch):
+def fetch_batches(batch_size, fetch_since, process_batch):
+    conn = get_connection()
     try:
-        with conn.cursor(name='emp-cursor') as cur:
+        with conn.cursor(name='my-cursor') as cur:
             total_rows = 0
             cur.execute("select id, year, title, rating, plot, modified from movie where modified >= %s order by id", [fetch_since])
             while True:
@@ -143,6 +148,17 @@ def fetch_batches(conn, batch_size, fetch_since, process_batch):
         conn.close()
 
 
+def fetch_all():
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("select id, year, title, rating, plot, modified from movie order by year, title")
+            rows = cur.fetchall()
+            return [to_movie(row) for row in rows]  # Fetchall returns a tuple for each row. Map rows to movies.
+    finally:
+        conn.close()
+
+
 def get_last_fetch_time():
     return datetime.fromisoformat('2010-01-01T00:00:00')
 
@@ -154,9 +170,13 @@ def print_movies(movies):
 
 if __name__ == "__main__":
     create_database()
-    db = get_connection(host='localhost', dbname='movies', user='postgres', password='postgres')
+    db = get_connection()
     create_movie_table(db)
     insert_loop(db)
     insert_execute_values(db)
     insert_executemany(db)
-    fetch_batches(db, 5, get_last_fetch_time(), print_movies)
+    db.close()
+    fetch_batches(5, get_last_fetch_time(), print_movies)
+    print('ALL MOVIES')
+    print_movies(fetch_all())
+    
